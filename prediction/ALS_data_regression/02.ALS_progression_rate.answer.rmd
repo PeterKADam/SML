@@ -1,0 +1,230 @@
+---
+output:
+  html_document:
+        theme: readable
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+
+library(tidyverse)
+
+df <- read_rds(file = "ALS_progression_rate.1822x370.rds")  %>% tbl_df()
+
+df <- df %>% rename(response = dFRS)
+
+head(df)
+
+```
+
+# Split into training and prediction set
+
+```{r}
+
+set.seed(0)
+
+data_train    <- df %>% filter(!is.na(response))
+data_predict  <- df %>% filter(is.na(response))                              
+
+dim(data_predict)
+dim(data_train)
+
+```
+
+# Example of simple prediction using the mean value
+
+```{r}
+
+# Always make the same split
+set.seed(0)
+
+# We use 80% for training and 20% for evaluation
+trainfold <- data_train %>% sample_frac(size=0.80)
+testfold  <- setdiff(data_train, trainfold)
+```
+
+
+```{r}
+# Load the necessary package
+library(glmnet)
+
+# Prepare the training data
+x_train <- model.matrix(response ~ ., trainfold)[,-1]  # predictor matrix
+y_train <- trainfold$response  # response vector
+
+# Fit the Lasso model
+fit <- glmnet(x_train, y_train, alpha = 1)
+
+# Choose the best lambda using cross-validation
+cv.fit <- cv.glmnet(x_train, y_train, alpha = 1)
+
+# Fit the final model using the best lambda
+final.fit <- glmnet(x_train, y_train, alpha = 1, lambda = cv.fit$lambda.min)
+
+# Prepare the test data
+x_test <- model.matrix(response ~ ., testfold)[,-1]  # predictor matrix
+y_test <- testfold$response  # response vector
+
+# Make predictions on the test data
+predictions <- predict(final.fit, newx = x_test, s = cv.fit$lambda.min)
+
+# Calculate the residuals
+residuals <- y_test - predictions
+
+# Calculate the RMSE
+rmse <- sqrt(mean(residuals^2))
+
+
+test_rmse <- rmse
+# Print the RMSE
+print(rmse)
+
+
+```
+
+
+```{r}
+  # predictor matrix
+# Prepare the prediction data
+x_predict <- model.matrix(~ ., data_predict[,-1])[,-1]  # predictor matrix
+# Make predictions on the prediction data
+predicted <- predict(final.fit, newx = x_predict, s = cv.fit$lambda.min)
+
+# Print the predicted values
+print(predicted)
+```
+
+# Plot of testfold observed and predicted values and residuals
+ 
+
+```{r}
+
+pd  <- tibble(observed, predicted) %>% 
+  mutate(residual = observed - predicted)
+
+
+ggplot(pd, aes(x=predicted, y=observed)) + 
+  geom_point() +
+  theme_classic() +
+  NULL
+
+
+ggplot(pd, aes(x=predicted, y=residual)) + 
+  geom_point() +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  theme_classic() +
+  NULL
+
+rm(pd)
+
+```
+
+# Predict the real unknown data
+
+First we fit the model to all of our known data
+
+Then we predict on the unknown data
+
+The predictions must have the following column and the row order must be the same as the original!
+
+* predicted (the predicted value)
+
+
+```{r}
+# Prepare the prediction data in the same way as the training data
+x_predict <- model.matrix(response ~ . -1, data_predict)  # predictor matrix
+
+# Ensure that x_predict has the same columns as x_train
+missing_cols <- setdiff(colnames(x_train), colnames(x_predict))
+for(col in missing_cols) {
+	x_predict[, col] <- 0
+}
+x_predict <- x_predict[, colnames(x_train), drop = FALSE]
+
+# Make predictions on the prediction data
+predicted <- predict(final.fit, newx = x_predict, s = cv.fit$lambda.min)
+
+# Create a tibble for the predicted values
+submission <- tibble(predicted)
+
+# Print the first few rows of the submission
+head(submission)
+```
+
+```{r}
+
+fit <-  lm(formula  = response ~ ., data = data_train)
+
+predicted <- predict(object=fit, newdata = data_predict, type = "response")
+
+submission <- tibble(predicted)
+
+head(submission)
+
+```
+
+# Submitting your answer
+
+The following code will give us
+
+* your chosen team name
+* the name of the people on the team
+* your estimated RMSE (from train/test or CV or similar)
+* your predictions
+
+Please edit the values below .
+
+The filename of the output will be automated als_progression.TEAMNAME.rds
+
+Please - do not use space or funny letters in your team name.
+
+```{r}
+
+team_name        <- "The_Brogrammers"
+team_people      <- c("Ane", "Peter")
+team_error_rate  <- test_rmse
+team_predictions <- submission # This should be a tibble with a column called "predicted"
+
+#
+# Always run this code
+# If it fails you have done something wrong!
+#
+# Extract the columns needed
+team_predictions <- team_predictions %>% select(predicted)
+
+# Save all the stuff in one object
+write_rds(x = list(team_name, team_people, team_error_rate, team_predictions), 
+          file = paste("als_progression.", team_name, ".rds", sep=""))
+
+```
+
+# Checking format of all saved objects
+
+```{r}
+
+files   <- Sys.glob("als_progression.*.rds")
+results <- tibble(filename = files, team_name=NA, team_people=NA, team_rmse=NA,n=NA, mean=NA)
+
+for (i in 1:nrow(results)) {
+  x <- read_rds(file = as.character(results$filename[i]))
+  results$team_name[i]        <- x[[1]]
+  results$team_people[i]      <- paste(x[[2]], collapse=",", sep=" ")
+  results$team_rmse[i]        <- x[[3]]
+  y                           <- x[[4]]
+  results$n                   <- nrow(y)
+  results$mean                <- mean(y$predicted, na.rm = T)
+  results$submission[i]       <- list(x[[4]])
+}
+
+rm(x,y)
+
+results %>% select(-filename)
+
+results$submission[[1]]
+
+```
+
+# Upload your rds file!
+
+

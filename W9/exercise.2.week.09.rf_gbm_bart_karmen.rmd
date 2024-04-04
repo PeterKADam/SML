@@ -63,7 +63,7 @@ I code as as 0 and 1 and make it a factor.
 
 ```{r}
 
-df  <- read_rds("karmen_data_with_sex_and_age.rds") 
+df  <- read_rds("W9/karmen_data_with_sex_and_age.rds") 
 compounds  <- df %>% select(-age,-sex) %>% names()
 
 df$sex <- factor(df$sex-1)
@@ -96,13 +96,24 @@ Inspect the different variables.
 
 ## Q1.1: How many predictors do we have?
 
+```{r}
+dim(age_data)
+```
+
+442 predictors
+
 ## Q1.2: What is your intuition about the associations between the data and the reponse?
 
 Think: do you expect linear relationships? Interactions? How many of the predictors do you think are associated with the two different responses?
 
 Questions like these may guide you in the direction of the model of choice!
 
+i dont know
+
 ## Q1.3: What is the size of the train/test split?
+
+80% train, 20% test
+233 train, 58 test
 
 # RandomForest regression of age
 
@@ -143,26 +154,27 @@ ytest  <- age_test$age
 ```
 
 
+```{r}
+
+rf.age = randomForest(x = xtrain, y=ytrain, keep.forest = T,
+					xtest=xtest, ytest=ytest,
+					ntree = 500, importance=T,
+					do.trace = T)
+
+```
+
 ---
 
 ## Q2.2: Make a plot with tree number on x and estimated mse on y
 
-I normally code stuff like this:
-
-```r
-
-rffit <- randomForest(x = xtrain, y=ytrain, keep.forest = T,
-                    xtest=xtest, ytest=ytest,
-                    ntree = 500, importance=T,
-                    do.trace = T
-                    )
-                    
-names(rffit)
-
-
+```{r}
+yhat.rf.age=predict(rf.age, xtest)
+mean((yhat.rf.age - ytest)^2)
 ```
 
-
+```{r}
+plot(x=seq(1,rf.age$ntree,by=1),rf.age$mse)
+```
 ---
 
 ## Q2.3: Do you have enough trees in your forest?
@@ -173,12 +185,21 @@ If so - ok.
 
 If not - you need more trees!
 
+If you have too many trees you will overfit the data.
+but i think 300 is enough
 
 ---
 
 ## Q2.4: How is the importance distributed?
 
 I.e. does it look like many or few molecules are important?
+
+```{r}
+varImpPlot(rf.age)
+```
+
+it looks like we have 7 important molecules
+
 
 
 ---
@@ -194,6 +215,31 @@ Note that the default values are different for classification (sqrt(p) where p i
 What happens if you use all off them? (bagging)
 What happens if you use very few predictors for each split? (e.g. 1/10 of predictors)
 
+```{r}
+# Calculate the number of predictors
+num_predictors <- ncol(xtrain)
+
+# Train a random forest using all predictors (bagging)
+rf_all_predictors <- randomForest(x = xtrain, y = ytrain, keep.forest = TRUE,
+								  xtest = xtest, ytest = ytest,
+								  ntree = 500, importance = TRUE,
+								  do.trace = TRUE, mtry = num_predictors)
+
+# Train a random forest using 1/10 of predictors for each split
+num_predictors_to_use <- num_predictors / 10
+rf_fraction_predictors <- randomForest(x = xtrain, y = ytrain, keep.forest = TRUE,
+									   xtest = xtest, ytest = ytest,
+									   ntree = 500, importance = TRUE,
+									   do.trace = TRUE, mtry = num_predictors_to_use)
+
+# Compare the mean squared error of the two models
+mse_all_predictors <- mean((predict(rf_all_predictors, xtest) - ytest)^2)
+mse_fraction_predictors <- mean((predict(rf_fraction_predictors, xtest) - ytest)^2)
+
+mse_all_predictors
+mse_fraction_predictors
+
+```
 
 ---
 
@@ -222,6 +268,10 @@ set.seed(0)
 ```
 
 
+```{r}
+boost.age = gbm(age ~ ., data = age_train, distribution = "gaussian", n.trees = 1000, interaction.depth = 1, shrinkage = 0.1, cv.folds = 5)
+```
+
 ---
 
 Like the randomforest() function, gbm() also returns some info on train and c.v. error.
@@ -230,18 +280,30 @@ Look at the help for gbm and identify what you need! (You have to look at what i
 
 ## Q3.2: Plot the CV error as function of tree number
 
+```{r}
+plot(x=seq(1,boost.age$n.trees,by=1),boost.age$cv.error)
+```
 
 ---
 
 ## Q3.3: What is your conclusion here? How many trees would you choose to use?
 
+cv error stabilizes around 200 trees 
 
 ---
 
 
 ## Q3.4: We have used shallow trees (depth 1) - what if you use deeper trees?
 
+```{r}
+boost.age_deep = gbm(age ~ ., data = age_train, distribution = "gaussian", n.trees = 1000, interaction.depth = 3, shrinkage = 0.1, cv.folds = 5)
 
+```
+```{r}
+plot(x=seq(1,boost.age_deep$n.trees,by=1),boost.age_deep$cv.error)
+```
+
+much gooder 5 is the perfect amount because we didnt look at others
 ---
 
 # BART regression
@@ -268,7 +330,7 @@ bart_predicted <- predict(bartfit, newdata = as.matrix(xtest))
 test_predicted <- colMeans(bart_predicted)
 test_observed  <- ytest
 residuals_bart <- (test_observed - test_predicted)
-mean(residuals_bart^2)
+bart.mse=mean(residuals_bart^2)
 
 ```
 
@@ -276,6 +338,20 @@ mean(residuals_bart^2)
 
 ## Q4.1: Use your three models to predict the test data, compare the error (MSE, MAE, RMSE - whatever your prefer). 
 
+
+```{r}
+
+rf.mse = mean((predict(rf.age, newdata=xtest) - ytest)^2)
+boost.mse = mean((predict(boost.age, newdata=xtest, n.trees=1000) - ytest)^2)
+bart.mse = bart.mse
+```
+
+```{r}
+rf.mse
+boost.mse
+bart.mse
+
+```
 
 ---
 

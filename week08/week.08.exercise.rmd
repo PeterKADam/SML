@@ -1,0 +1,140 @@
+---
+title: "Week 08 in Statistical machine learning in bioinformatics"
+author: "Thomas Bataillon"
+date: "latest update: `r Sys.Date()`"
+output:
+  html_document:
+        theme: readable
+editor_options: 
+  chunk_output_type: console
+---
+## >Q Conceptual exercise 
+
+It was stated in the textbook - `it is not hard to show ` that classifying an observation to the class for which (4.17) is largest is equivalent to classifying an observation to the class for which (4.18) is largest. 
+
+I hate it when math people do that ... but let's try to do just that because there is actually a few intuitions to be gained once we digest the notations and what they actually mean.
+
+We will do that by looking closely at the ingredients $f_k(x)$ and $\pi_k$ in the simplest case where we do LDA with $p=1$ predictor. 
+
+The goal is to show with pencil and paper that maximizing the discriminant function $\delta_k(x)$ amounts to maximizing the posterior probability $p_k(x)$
+
+Our assumptions are that the observations in the kth
+class are drawn from a $N(μ_k,\sigma^2)$ distribution, the Bayes classifier assigns an observation to the class for which the discriminant function is maximized
+
+
+**Hint**: read back the section 
+`4.4.1 Linear Discriminant Analysis for p = 1` and recognize that although this expression below looks: 
+
+![](sca_eq4.17.png)
+
+But a few tricks can come handy .. 
+
+A first trick is that there are a lot of ugly terms that are actually constants there. In particular remember that the bulky denominator that looks very intimidating is really $p(x)$ so it is actually a constant that carries no information of which $p_k(x)$ is bigger.
+
+The second trick is to take `log()` because we can get rid of $exp(...)$ and taking log() of two expression is legit because you still get the max at the same location (we do that all the time when doing likelihood functions).
+
+The last trick is to develop the $(x - \mu_k)^2$ term as and to recognize again what are terms that depend on $x$ only .. because these can also be seen as constant once you get a given x value there is no information on how to classify 
+
+
+## >Q Implement  & compare 2 other methods (QDA/LDA/Naive Bayes) with your previous favorite. classifier
+
+Compare the performance of LDA QDA and the method we have used for your first round of prediction  (i.e. logistic regression or KNN).
+Compare their ability to classify `Normal/Cancer` by feeding them the same set of predictors as the one you used for your first submission round. 
+Note you could  use any predictors from the TCGA dataset (i.e. individual gene expression predictors and or PC1 to PC3).
+
+```{r}
+library(tidyverse)
+library(MASS)
+```
+
+```{r}
+
+df <- read_rds(file = "week08/miniTCGA.3349x4006.rds")
+own <- read_rds(file = "week08/minitcga_cancer_classification.The_Brogrammers.rds")
+```
+
+```{r} 
+select()
+```
+
+```{r}
+
+set.seed(0)
+
+data_train    <- df %>% filter(!is.na(response))
+dim(data_train)
+
+data_predict  <- df %>% filter(is.na(response))                              
+dim(data_predict)
+```
+
+```{r}
+trainfold <- data_train %>% sample_frac(size=0.80)
+testfold  <- setdiff(data_train, trainfold)
+
+lda.fit <- lda(response ~ . - pc1 - pc2 - pc3 - tissue, data = trainfold)
+```
+
+```{r}
+lda.pred <- predict(lda.fit, testfold)
+```
+
+```{r}
+names(lda.pred)
+sum(lda.pred$posterior[, 1] >= .5)
+
+sum(lda.pred$posterior[, 1] < .5)
+Response = 
+table(lda.pred$class, response)
+
+```
+
+```{r}
+predictions = predict(lda.fit, newdata = data_predict, type = "response")
+```
+
+```{r}
+table(predictions$class, unname(as_vector(own[[4]])))
+```
+
+
+#QDA:
+```{r}
+qda.fit <- qda(response ~ . - pc1 - pc2 - pc3 - tissue, data = trainfold)
+```
+
+```{r}
+```
+
+
+#Nbayes
+
+```{r}
+
+library("e1071")
+
+nb.fit <- naiveBayes(response ~ . - pc1 - pc2 - pc3 - tissue, data = trainfold)
+
+
+
+```
+
+```{r}
+
+nb.pred = predict(nb.fit, data_predict)
+
+```
+
+
+```{r}
+table(nb.pred, unname(as_vector(own[[4]])))
+
+```
+
+```
+
+## >Q use cross validation to examine how accurate are the predictions you can make with LDA and QDA
+
+
+## >Q Get ready submit your second  best predictions as a TEAM using a rds format 
+Now you are ahead of the next assignment :0).
