@@ -9,6 +9,9 @@ editor_options:
 ```{r}
 
 library(tidyverse)
+library(caret)
+library(doParallel)
+library(lightgbm)
 
 df <- read_rds(file = "prediction/ALS_data_regression/ALS_progression_rate.1822x370.rds")  %>% tbl_df()
 
@@ -24,6 +27,10 @@ head(df)
 
 set.seed(0)
 
+
+
+
+
 data_train    <- df %>% filter(!is.na(response))
 data_predict  <- df %>% filter(is.na(response))                              
 
@@ -38,10 +45,11 @@ dim(data_train)
 
 # Always make the same split
 set.seed(0)
+train_index <- createDataPartition(data_train$response, p = 0.8, list = FALSE)
 
 # We use 80% for training and 20% for evaluation
-trainfold <- data_train %>% sample_frac(size=0.80)
-testfold  <- setdiff(data_train, trainfold)
+trainfold <- data_train[train_index,]
+testfold  <- data_train[-train_index,]
 ```
 
 
@@ -84,16 +92,111 @@ print(rmse)
 ```
 
 
-```{r}
-  # predictor matrix
-# Prepare the prediction data
-x_predict <- model.matrix(~ ., data_predict[,-1])[,-1]  # predictor matrix
-# Make predictions on the prediction data
-predicted <- predict(final.fit, newx = x_predict, s = cv.fit$lambda.min)
 
-# Print the predicted values
-print(predicted)
+
+randomforest
+```{r}
+
+fitControl = trainControl(method = "repeatedcv", number = 5, repeats = 3)
+
+cl = makePSOCKcluster(5)
+registerDoParallel(cl)
+
+rf_fit <- train(response ~ ., data = trainfold, method = "rf", trControl = fitControl)
+stopCluster(cl)
+
 ```
+
+```{r}
+predicted_test_rf <- predict(rf_fit, newdata = testfold)
+postResample(predicted_test_rf, testfold$response)
+```
+
+
+GBM
+```{r}
+cl = makePSOCKcluster(5)
+registerDoParallel(cl)
+
+gbm_fit <- train(response ~ ., data = trainfold, method = "gbm", trControl = fitControl)
+stopCluster(cl)
+```
+
+```{r}
+predicted_test_gbm <- predict(gbm_fit, newdata = testfold)
+postResample(predicted_test_gbm, testfold$response)
+```
+
+lightgbm
+
+```{r}
+
+```
+
+```{r}
+
+# Convert data frames to matrices
+train_data <- as.matrix(trainfold[, -1])
+train_label <- as.numeric(trainfold[, 1])
+valid_data <- as.matrix(testfold[, -1])
+valid_label <- as.numeric(testfold[, 1])
+
+# Create datasets for lightgbm
+lgb_train <- lgb.Dataset(data = as.matrix(trainfold[, -1]), label = trainfold[, 1])
+lgb_valid <- lgb.Dataset(data = as.matrix(testfold[, -1]), label = testfold[, 1])
+
+```
+```{r}
+# Set parameters
+params <- list(objective = "regression",
+			   metric = "rmse")
+```
+```{r}
+# Train the model
+lgbm_fit <- lgb.train(params,
+					  data = lgb_train,
+					  nrounds = 10000,
+					  valids = list(validation = lgb_valid),
+					  early_stopping_rounds = 100,
+					  verbose = 1)
+```
+
+```{r}
+# Predict on validation set
+valid_pred <- predict(lgbm_fit, as.matrix(testfold[, -1]))
+```
+```{r}
+# Calculate RMSE
+rmse <- sqrt(mean((valid_pred - testfold[, 1])^2))
+print(paste("Validation RMSE:", rmse))
+```
+
+lasso
+
+```{r}
+library(glmnet)
+
+cl = makePSOCKcluster(5)
+registerDoParallel(cl)
+
+lasso_fit = train(response ~ ., data = trainfold, method = "glmnet", trControl = fitControl)
+
+stopCluster(cl)
+```
+
+```{r}
+predicted_test_fit <- predict(lasso_fit, newdata = testfold)
+postResample(predicted_test_fit, testfold$response)
+```
+
+```{r}
+print(paste("rf RMSE:", postResample(predicted_test_rf, testfold$response)))
+print(paste("gbm RMSE:", postResample(predicted_test_gbm, testfold$response)))
+#print(paste("lightgbm RMSE:", rmse))
+print(paste("lasso RMSE:", postResample(predicted_test_fit, testfold$response)))
+```
+
+
 
 # Plot of testfold observed and predicted values and residuals
  
@@ -129,6 +232,17 @@ Then we predict on the unknown data
 The predictions must have the following column and the row order must be the same as the original!
 
 * predicted (the predicted value)
+
+```{r}
+  # predictor matrix
+# Prepare the prediction data
+x_predict <- model.matrix(~ ., data_predict[,-1])[,-1]  # predictor matrix
+# Make predictions on the prediction data
+predicted <- predict(final.fit, newx = x_predict, s = cv.fit$lambda.min)
+
+# Print the predicted values
+print(predicted)
+```
 
 
 ```{r}
