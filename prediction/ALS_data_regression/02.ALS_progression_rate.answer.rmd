@@ -57,8 +57,9 @@ y_train <- trainfold$response  # response vector
 fit <- glmnet(x_train, y_train, alpha = 1)
 
 # Choose the best lambda using cross-validation
-cv.fit <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 10)
+cv.fit <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 20)
 
+print(cv.fit$lambda.min)
 # Fit the final model using the best lambda
 final.fit <- glmnet(x_train, y_train, alpha = 1, lambda = cv.fit$lambda.min)
 
