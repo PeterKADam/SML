@@ -13,12 +13,16 @@ library(caret)
 library(doParallel)
 library(lightgbm)
 
+
+
+```
+
+```{r}
 df <- read_rds(file = "prediction/ALS_data_regression/ALS_progression_rate.1822x370.rds")  %>% tbl_df()
 
 df <- df %>% rename(response = dFRS)
 
 head(df)
-
 ```
 
 # Split into training and prediction set
@@ -92,6 +96,44 @@ print(rmse)
 ```
 
 
+
+```{r}
+# Install and load the necessary packages
+library(lightgbm)
+
+# Prepare the training data
+train_data <- lgb.Dataset(data = model.matrix(response ~ ., trainfold)[,-1], label = trainfold$response)
+
+# Set the parameters for the LightGBM model
+params <- list(objective = "regression",
+			   metric = "rmse",
+			   learning_rate = 0.1,
+			   num_leaves = 31,
+			   bagging_fraction = 0.8,
+			   feature_fraction = 0.8)
+
+# Train the LightGBM model
+model <- lgb.train(params,
+				   data = train_data,
+				   nrounds = 100,
+				   verbose = 0)
+
+# Prepare the test data
+x_test <- model.matrix(response ~ ., testfold)[,-1]  # predictor matrix
+y_test <- testfold$response  # response vector
+
+# Make predictions on the test data
+predictions <- predict(model, x_test)
+
+# Calculate the residuals
+residuals <- y_test - predictions
+
+# Calculate the RMSE
+rmse <- sqrt(mean(residuals^2))
+
+# Print the RMSE
+print(rmse)
+```
 
 
 randomforest
