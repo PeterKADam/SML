@@ -40,7 +40,7 @@ dim(data_train)
 set.seed(0)
 
 # We use 80% for training and 20% for evaluation
-trainfold <- data_train %>% sample_frac(size=0.80)
+trainfold <- data_train %>% sample_frac(size=0.95)
 testfold  <- setdiff(data_train, trainfold)
 ```
 
@@ -57,7 +57,7 @@ y_train <- trainfold$response  # response vector
 fit <- glmnet(x_train, y_train, alpha = 1)
 
 # Choose the best lambda using cross-validation
-cv.fit <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 20)
+cv.fit <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 10)
 
 print(cv.fit$lambda.min)
 # Fit the final model using the best lambda
@@ -83,7 +83,6 @@ print(rmse)
 
 ```
 
-
 ```{r}
   # predictor matrix
 # Prepare the prediction data
@@ -98,27 +97,6 @@ print(predicted)
 # Plot of testfold observed and predicted values and residuals
  
 
-```{r}
-
-pd  <- tibble(observed, predicted) %>% 
-  mutate(residual = observed - predicted)
-
-
-ggplot(pd, aes(x=predicted, y=observed)) + 
-  geom_point() +
-  theme_classic() +
-  NULL
-
-
-ggplot(pd, aes(x=predicted, y=residual)) + 
-  geom_point() +
-  geom_hline(yintercept = 0, linetype="dashed") +
-  theme_classic() +
-  NULL
-
-rm(pd)
-
-```
 
 # Predict the real unknown data
 
@@ -130,20 +108,12 @@ The predictions must have the following column and the row order must be the sam
 
 * predicted (the predicted value)
 
-
 ```{r}
 # Prepare the prediction data in the same way as the training data
-x_predict <- model.matrix(response ~ . -1, data_predict)  # predictor matrix
-
-# Ensure that x_predict has the same columns as x_train
-missing_cols <- setdiff(colnames(x_train), colnames(x_predict))
-for(col in missing_cols) {
-	x_predict[, col] <- 0
-}
-x_predict <- x_predict[, colnames(x_train), drop = FALSE]
+x_predict <- model.matrix(~ ., data_predict[,-1])[,-1]   # predictor matrix
 
 # Make predictions on the prediction data
-predicted <- predict(final.fit, newx = x_predict, s = cv.fit$lambda.min)
+predicted <- glmnet:::predict.elnet(final.fit, newx = x_predict, s = cv.fit$lambda.min, type = "response")
 
 # Create a tibble for the predicted values
 submission <- tibble(predicted)
@@ -203,7 +173,7 @@ write_rds(x = list(team_name, team_people, team_error_rate, team_predictions),
 
 ```{r}
 
-files   <- Sys.glob("als_progression.*.rds")
+files   <- Sys.glob("als_progression.The_*.rds")
 results <- tibble(filename = files, team_name=NA, team_people=NA, team_rmse=NA,n=NA, mean=NA)
 
 for (i in 1:nrow(results)) {
